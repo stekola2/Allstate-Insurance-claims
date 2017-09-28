@@ -1,0 +1,87 @@
+
+
+library(corrplot);
+library(caret);
+library(car);
+library(MASS);
+library(MATRIX);
+library(MLR);
+library(parallelMap);
+library(data.table);
+
+train<-read.csv("train.csv",header=TRUE);
+test<- read.csv("test.csv",header=TRUE);
+
+ 
+// check for outliers 
+boxplot(train$cont1);boxplot(train$cont2);boxplot(train$cont3);
+boxplot(train$cont4);boxplot(train$cont4);boxplot(train$cont5);
+boxplot(train$cont6);boxplot(train$cont7);boxplot(train$cont8);
+boxplot(train$cont9);boxplot(train$cont10);boxplot(train$cont11);
+boxplot(train$cont12);boxplot(train$cont13);boxplot(train$cont14);
+
+// getting rid of outliers 
+t<-quantile(train$cont7,prob=c(0.01,0.05,0.95,0.985));
+train$cont7_new<-ifelse(train$cont7>t[4],t[4],train$cont7);
+t<-quantile(train$cont9,prob=c(0.01,0.05,0.9325,0.95));
+train$cont9_new<-ifelse(train$cont9<t[1],t[1],ifelse(train$cont9>t[3],t[3],train$cont9));
+t<-quantile(train$cont10,prob=c(0.01,0.05,0.95,0.99));
+train$cont10_new<-ifelse(train$cont10>t[4],t[4],train$cont10);
+
+df<-train; 
+df$cont7<-NULL;
+df$cont9<-NULL;
+df$cont10<-NULL;
+df$cont7<- df$cont7_new;
+df$cont9<-df$cont9_new;
+df$cont10<-df$cont10_new;
+df$cont7_new<-NULL;
+df$cont9_new<-NULL;
+df$cont10_new<-NULL
+
+//    Check the distribution of the target variable 
+plot(density(df$loss));
+t<quantile(df$loss,prob=c(0.01,0.05,0.95,0.999));
+par(mfrow=c(1,2));
+boxplot(df$loss);
+par(mfrow=c(2,1));
+plot(denisty(log(df$loss)));boxplot(log(df$loss));
+
+// Checking for Multicollineariy 
+
+fit<-lm(loss~ cont1+cont2+cont3+cont4+cont5+cont6+cont7+cont8+cont9+cont10+cont11+cont12+cont13+cont14+cat1+cat2+cat3+cat4+cat5+cat6+cat7+cat8+cat9+cat10+cat11+cat12+cat13+cat14+cat16+cat17+cat18+cat19+cat20+cat21+cat23+cat24+cat25+cat26+cat27+cat28+cat29+cat30+cat31+cat32+cat33+cat34+cat35,data=train);
+step_fit<- stepAIC(fit, direction ="backward");
+final_model<- lm(loss ~ cont1 + cont2 + cont3 + cont4 + cont5 + cont6 + cont7 + 
+    cont8 + cont9 + cont10 + cont11 + cont12 + cont13 + cont14 + 
+    cat1 + cat3 + cat4 + cat5 + cat6 + cat7 + cat8 + cat9 + cat10 + 
+    cat11 + cat12 + cat13 + cat14 + cat16 + cat17 + cat20 + cat21 + 
+    cat23 + cat24 + cat25 + cat26 + cat27 + cat28 + cat29 + cat30 + 
+    cat31 + cat32 + cat33 + cat34 + cat35,data=train);    
+summary(final_model);
+vif(final_model); 
+
+// checking for Heteroscedasticity and completing the model 
+dim(train);dim(test);
+trainfeat<- data.table(train[-c(110,111,113,114,117)]);
+testfeat<- data.table(test[-c(110,111,113,114,117)]);
+testfact= cbind(testfeat,loss=0);
+ 
+ 
+train_sparse_matrix= sparse.model.matrix(loss~.-1,data=trainfeat);
+test_sparse_matrix= sparse.model.matrix(loss~.-1,data=testfact);
+train_output_vector=trainfeat$loss;
+
+train_boost =xgboost(data=train_sparse_matric,label=train_output_vector,nrounds=100,objective="reg:linear")
+trainpreds = predict(train_boost,test_sparse_matrix)
+testfact$loss = trainpreds
+
+train_boost =xgboost(data=train_sparse_matrix,label=train_output_vector,nrounds=100,objective="reg:linear",eta=0.05, max_depth=6,min_child_weight=100,subsample=0.75)
+trainpreds = predict(train_boost,test_sparse_matrix)
+testfact$loss = trainpreds
+ 
+train_boost =xgboost(data=train_sparse_matrix,label=train_output_vector,nrounds=1000,objective="reg:linear",eta=.03) 
+trainpreds = predict(train_boost,test_sparse_matrix)
+testfact$loss = trainpreds
+ 
+ 
+ 
